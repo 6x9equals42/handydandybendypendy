@@ -85,7 +85,7 @@ def integrate_pendulum(n, times,
 
     # Fixed parameters: gravitational constant, lengths, and masses
     parameters = [b] + [g] + list(l) + list(m)
-    parameter_vals = [0.49] + [9.81] + list(lengths) + list(masses)
+    parameter_vals = [0.09] + [9.81] + list(lengths) + list(masses)
 
     # define symbols for unknown parameters
     unknowns = [Dummy() for i in q + u]
@@ -110,7 +110,7 @@ def integrate_pendulum(n, times,
 
     print("integrating")
     # ODE integration
-    return euler(gradient, y0, times, args=(parameter_vals,))
+    return trapezoid(gradient, y0, times, args=(parameter_vals,))
 
 def euler(func, y0, t, args=()):
     y = np.zeros((len(t), len(y0)))
@@ -119,9 +119,20 @@ def euler(func, y0, t, args=()):
     for i in range(1, len(t)):
         #for j in range(len(y0)):
             #print(args.shape)
-            derivative = func(y[i-1], t[i], args[0])
+            derivative = func(y[i-1], t[i-1], args[0])
             y[i] = derivative*(t[i]-t[i-1]) + y[i-1]
     return y
+
+def trapezoid(func, y0, t, args=()):
+    y =np.zeros((len(t), len(y0)))
+    y[0] = y0
+
+    for i in range(1, len(t)):
+        dt = t[i] - t[i-1]
+        eulerApprox = dt*func(y[i-1], t[i-1], args[0]) + y[i-1]
+        y[i] = 0.5 * dt * (func(y[i-1], t[i-1], args[0]) + func(eulerApprox, t[i], args[0])) + y[i-1]
+    return y
+
 
 def get_xy_coords(p, lengths=None):
     """Get (x, y) coordinates from generalized coordinates p"""
@@ -163,7 +174,7 @@ start = time.time()
 
 # t = np.linspace(0, 10, 200)
 # p = integrate_pendulum(7, t, masses = 1)
-anim = animate_pendulum(3)
+anim = animate_pendulum(4)
 
 
 
@@ -172,7 +183,7 @@ Writer = animation.writers['ffmpeg']
 writer = Writer(fps=20, metadata=dict(artist='Me'), bitrate=1800)
 
 
-anim.save('testeuler.mp4', writer=writer)
+anim.save('testtrapezoid_09fr_slow.mp4', writer=writer)
 
 end = time.time()
 print(end - start)
