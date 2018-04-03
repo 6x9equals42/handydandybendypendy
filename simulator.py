@@ -85,7 +85,7 @@ def integrate_pendulum(n, times,
 
     # Fixed parameters: gravitational constant, lengths, and masses
     parameters = [b] + [g] + list(l) + list(m)
-    parameter_vals = [-0.09] + [9.81] + list(lengths) + list(masses)
+    parameter_vals = [0.49] + [9.81] + list(lengths) + list(masses)
 
     # define symbols for unknown parameters
     unknowns = [Dummy() for i in q + u]
@@ -102,13 +102,26 @@ def integrate_pendulum(n, times,
     print("generating derivatives of parameters")
     # function which computes the derivatives of parameters
     def gradient(y, t, args):
+        #print(y.shape)
+        #print(args.shape)
         vals = np.concatenate((y, args))
         sol = np.linalg.solve(mm_func(*vals), fo_func(*vals))
         return np.array(sol).T[0]
 
     print("integrating")
     # ODE integration
-    return odeint(gradient, y0, times, args=(parameter_vals,))
+    return euler(gradient, y0, times, args=(parameter_vals,))
+
+def euler(func, y0, t, args=()):
+    y = np.zeros((len(t), len(y0)))
+    y[0] = y0
+
+    for i in range(1, len(t)):
+        #for j in range(len(y0)):
+            #print(args.shape)
+            derivative = func(y[i-1], t[i], args[0])
+            y[i] = derivative*(t[i]-t[i-1]) + y[i-1]
+    return y
 
 def get_xy_coords(p, lengths=None):
     """Get (x, y) coordinates from generalized coordinates p"""
@@ -122,7 +135,7 @@ def get_xy_coords(p, lengths=None):
     return np.cumsum(x, 1), np.cumsum(y, 1)
 
 def animate_pendulum(n):
-    t = np.linspace(0, 10, 200)
+    t = np.linspace(0, 5, 400)
     p = integrate_pendulum(n, t, masses = 1)
     x, y = get_xy_coords(p)
 
@@ -150,7 +163,7 @@ start = time.time()
 
 # t = np.linspace(0, 10, 200)
 # p = integrate_pendulum(7, t, masses = 1)
-anim = animate_pendulum(7)
+anim = animate_pendulum(3)
 
 
 
@@ -159,7 +172,7 @@ Writer = animation.writers['ffmpeg']
 writer = Writer(fps=20, metadata=dict(artist='Me'), bitrate=1800)
 
 
-anim.save('testnegfriction.mp4', writer=writer)
+anim.save('testeuler.mp4', writer=writer)
 
 end = time.time()
 print(end - start)
