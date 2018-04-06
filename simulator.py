@@ -8,6 +8,7 @@ from sympy.physics import mechanics
 
 from sympy import Dummy, lambdify
 from scipy.integrate import odeint
+from scipy.integrate import BDF
 
 from matplotlib import animation
 
@@ -110,7 +111,8 @@ def integrate_pendulum(n, times,
 
     print("integrating")
     # ODE integration
-    return trapezoid(gradient, y0, times, args=(parameter_vals,))
+
+    return odeint(gradient, y0, times, args=(parameter_vals,))
 
 def euler(func, y0, t, args=()):
     y = np.zeros((len(t), len(y0)))
@@ -133,6 +135,19 @@ def trapezoid(func, y0, t, args=()):
         y[i] = 0.5 * dt * (func(y[i-1], t[i-1], args[0]) + func(eulerApprox, t[i], args[0])) + y[i-1]
     return y
 
+
+def RK4(func, y0, t, args=()):
+    y = np.zeros((len(t), len(y0)))
+    y[0] = y0
+
+    for i in range(1, len(t)):
+        h = t[i] - t[i-1]
+        k1 = func(y[i-1], t[i-1] , args[0])
+        k2 = func(y[i-1] + h*(k1/2), t[i-1] + (h/2), args[0])
+        k3 = func(y[i-1] + h*(k2/2), t[i-1] + (h/2), args[0])
+        k4 = func(y[i-1] + (h*k3), t[i-1] + h, args[0])
+        y[i] = y[i-1] + ((h/6)*(k1+(2*k2)+(2*k3)+k4))
+    return y
 
 def get_xy_coords(p, lengths=None):
     """Get (x, y) coordinates from generalized coordinates p"""
@@ -183,7 +198,7 @@ Writer = animation.writers['ffmpeg']
 writer = Writer(fps=20, metadata=dict(artist='Me'), bitrate=1800)
 
 
-anim.save('testtrapezoid_09fr_slow.mp4', writer=writer)
+anim.save('testst.mp4', writer=writer)
 
 end = time.time()
 print(end - start)
