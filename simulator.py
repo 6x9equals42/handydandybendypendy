@@ -2,6 +2,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import time
+import pickle
+import math
 
 from sympy import symbols
 from sympy.physics import mechanics
@@ -12,11 +14,7 @@ from scipy.integrate import BDF
 
 from matplotlib import animation
 
-
-def integrate_pendulum(n, times,
-                       initial_positions=135,
-                       initial_velocities=0,
-                       lengths=None, masses=1):
+def generateODEingredients(n, lengths=None, masses=1):
     """Integrate a multi-pendulum with `n` sections"""
     #-------------------------------------------------
     # Step 1: construct the pendulum model
@@ -30,7 +28,7 @@ def integrate_pendulum(n, times,
     m = symbols('m:{0}'.format(n))
     l = symbols('l:{0}'.format(n))
 
-    # gravity and time symbols
+    # gravity and time symbolsg
     b, g, t = symbols('b,g,t')
 
     #--------------------------------------------------
@@ -71,13 +69,6 @@ def integrate_pendulum(n, times,
                                kd_eqs=kinetic_odes)
     fr, fr_star = KM.kanes_equations(forces, particles)
 
-    #-----------------------------------------------------
-    # Step 3: numerically evaluate equations and integrate
-
-    # initial positions and velocities – assumed to be given in degrees
-    y0 = np.deg2rad(np.concatenate([np.broadcast_to(initial_positions, n),
-                                    np.broadcast_to(initial_velocities, n)]))
-
     # lengths and masses
     if lengths is None:
         lengths = np.ones(n) / n
@@ -85,17 +76,32 @@ def integrate_pendulum(n, times,
     masses = np.broadcast_to(masses, n)
 
     # Fixed parameters: gravitational constant, lengths, and masses
-    parameters = [b] + [g] + list(l) + list(m)
-    parameter_vals = [0.09] + [9.81] + list(lengths) + list(masses)
+    parameters = [b] + [g] + list(l) + list(m) ##
+    parameter_vals = [0.09] + [9.81] + list(lengths) + list(masses) ##
 
     # define symbols for unknown parameters
-    unknowns = [Dummy() for i in q + u]
+    unknowns = [Dummy() for i in q + u] ##
     unknown_dict = dict(zip(q + u, unknowns))
     kds = KM.kindiffdict()
 
     # substitute unknown symbols for qdot terms
-    mm_sym = KM.mass_matrix_full.subs(kds).subs(unknown_dict)
-    fo_sym = KM.forcing_full.subs(kds).subs(unknown_dict)
+    mm_sym = KM.mass_matrix_full.subs(kds).subs(unknown_dict) ##
+    fo_sym = KM.forcing_full.subs(kds).subs(unknown_dict) ##
+
+
+    with open("ode"+str(n)+".pickle", "wb") as f:
+        pickle.dump((parameters,parameter_vals,unknowns,mm_sym,fo_sym), f)
+
+def solveODEs(n, times, func,
+                       initial_positions=135,
+                       initial_velocities=0):
+
+    # initial positions and velocities – assumed to be given in degrees
+    y0 = np.deg2rad(np.concatenate([np.broadcast_to(initial_positions, n),
+                                    np.broadcast_to(initial_velocities, n)]))
+
+    with open("ode"+str(n)+".pickle", "rb") as f:
+        parameters,parameter_vals,unknowns,mm_sym,fo_sym = pickle.load(f)
 
     # create functions for numerical calculation
     mm_func = lambdify(unknowns + parameters, mm_sym)
@@ -103,8 +109,6 @@ def integrate_pendulum(n, times,
     print("generating derivatives of parameters")
     # function which computes the derivatives of parameters
     def gradient(y, t, args):
-        #print(y.shape)
-        #print(args.shape)
         vals = np.concatenate((y, args))
         sol = np.linalg.solve(mm_func(*vals), fo_func(*vals))
         return np.array(sol).T[0]
@@ -112,7 +116,8 @@ def integrate_pendulum(n, times,
     print("integrating")
     # ODE integration
 
-    return odeint(gradient, y0, times, args=(parameter_vals,))
+    return func(gradient, y0, times, args=(parameter_vals,))
+
 
 def euler(func, y0, t, args=()):
     y = np.zeros((len(t), len(y0)))
@@ -160,11 +165,11 @@ def get_xy_coords(p, lengths=None):
     y = np.hstack([zeros, -lengths * np.cos(p[:, :n])])
     return np.cumsum(x, 1), np.cumsum(y, 1)
 
-def animate_pendulum(n):
-    t = np.linspace(0, 5, 400)
-    p = integrate_pendulum(n, t, masses = 1)
-    x, y = get_xy_coords(p)
 
+def animate_pendulum2(n, func):
+    t = np.linspace(0, 10, 200)
+    p = solveODEs(n, t, func)
+    x, y = get_xy_coords(p)
     fig, ax = plt.subplots(figsize=(8, 8))
     fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
     ax.axis('off')
@@ -185,20 +190,44 @@ def animate_pendulum(n):
                                    blit=True, init_func=init)
     plt.close(fig)
     return anim
-start = time.time()
 
-# t = np.linspace(0, 10, 200)
-# p = integrate_pendulum(7, t, masses = 1)
-anim = animate_pendulum(4)
+def simulate(n, stepsize, func):
+    t = np.linspace(0, 10 - stepsize, 10/stepsize)
+    p = solveODEs(n, t, func)
+    return get_xy_coords(p)
 
+def baseComparison(n):
+    return simulate(n, .0001, odeint)
+
+def generateData(n, func):
+    x_base, y_base = baseComparison(n)
+    stepsizes = [.04,.02,.01, .005]
+    print("try")
+    for i in range(len(stepsizes)):
+        step = stepsizes[i]
+        x, y = simulate(n, step, func)
+        plt.plot(np.linspace(0, 10 - step, 10/step),((x[:,n]-x_base[::int(step/.0001),n])**2 + (y[:,n]-y_base[::int(step/.0001),n])**2)**.5,'b.')
+
+        plt.show()
+#generateODEingredients(4)
+#anim = animate_pendulum2(4, odeint)
+
+def generate1Data(n, func):
+    x_base, y_base = baseComparison(n)
+    step = 0.02
+    x, y = simulate(n, step, func)
+    plt.plot(np.linspace(0, 10 - step, 10/step),((x[:,n]-x_base[::int(step/.0001),n])**2 + (y[:,n]-y_base[::int(step/.0001),n])**2)**.5,'b.')
+
+    plt.show()
+
+generateData(4, RK4)
+generateData(4, euler)
+generateData(4, trapezoid)
 
 
 #Set up formatting for the movie files
-Writer = animation.writers['ffmpeg']
-writer = Writer(fps=20, metadata=dict(artist='Me'), bitrate=1800)
+#Writer = animation.writers['ffmpeg']
+#writer = Writer(fps=20, metadata=dict(artist='Me'), bitrate=1800)
 
 
-anim.save('testst.mp4', writer=writer)
-
-end = time.time()
-print(end - start)
+#anim.save('odeint4.mp4', writer=writer)
