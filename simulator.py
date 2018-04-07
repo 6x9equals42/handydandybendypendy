@@ -73,7 +73,7 @@ def generateODEingredients(n, lengths=None, masses=1):
     if lengths is None:
         lengths = np.ones(n) / n
     lengths = np.broadcast_to(lengths, n)
-    masses = np.broadcast_to(masses, n)
+    masses = np.broadcast_to(masses, n) / n
 
     # Fixed parameters: gravitational constant, lengths, and masses
     parameters = [b] + [g] + list(l) + list(m) ##
@@ -167,9 +167,9 @@ def get_xy_coords(p, lengths=None):
 
 
 def animate_pendulum2(n, func):
-    t = np.linspace(0, 10, 200)
-    p = solveODEs(n, t, func)
-    x, y = get_xy_coords(p)
+    stepsize = .01
+    t = np.linspace(0, 10 - stepsize, 10/stepsize)
+    x, y = simulate(n, stepsize, func)
     fig, ax = plt.subplots(figsize=(8, 8))
     fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
     ax.axis('off')
@@ -189,6 +189,9 @@ def animate_pendulum2(n, func):
                                    interval=1000 * t.max() / len(t),
                                    blit=True, init_func=init)
     plt.close(fig)
+    Writer = animation.writers['ffmpeg']
+    writer = Writer(fps=20, metadata=dict(artist='Me'), bitrate=1800)
+    anim.save('odeint10.mp4', writer=writer)
     return anim
 
 def simulate(n, stepsize, func):
@@ -207,7 +210,8 @@ def generateData(n, func):
         step = stepsizes[i]
         x, y = simulate(n, step, func)
         plt.plot(np.linspace(0, 10 - step, 10/step),((x[:,n]-x_base[::int(step/.0001),n])**2 + (y[:,n]-y_base[::int(step/.0001),n])**2)**.5,'b.')
-
+        plt.xlabel('time')
+        plt.ylabel('error (distance away)')
         plt.show()
 #generateODEingredients(4)
 #anim = animate_pendulum2(4, odeint)
@@ -220,9 +224,9 @@ def generate1Data(n, func):
 
     plt.show()
 
-generateData(4, RK4)
-generateData(4, euler)
-generateData(4, trapezoid)
+# generateData(4, RK4)
+# generateData(4, euler)
+# generateData(4, trapezoid)
 
 
 #Set up formatting for the movie files
