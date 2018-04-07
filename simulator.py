@@ -10,7 +10,6 @@ from sympy.physics import mechanics
 
 from sympy import Dummy, lambdify
 from scipy.integrate import odeint
-from scipy.integrate import BDF
 
 from matplotlib import animation
 
@@ -73,7 +72,7 @@ def generateODEingredients(n, lengths=None, masses=1):
     if lengths is None:
         lengths = np.ones(n) / n
     lengths = np.broadcast_to(lengths, n)
-    masses = np.broadcast_to(masses, n)
+    masses = np.broadcast_to(masses, n) / n
 
     # Fixed parameters: gravitational constant, lengths, and masses
     parameters = [b] + [g] + list(l) + list(m) ##
@@ -206,23 +205,43 @@ def generateData(n, func):
     for i in range(len(stepsizes)):
         step = stepsizes[i]
         x, y = simulate(n, step, func)
+        plt.xlabel("Time")
+        plt.ylabel("Distance")
+        plt.title("stepsize: " + str(stepsizes[i]) + " function: " + str(func.__name__))
         plt.plot(np.linspace(0, 10 - step, 10/step),((x[:,n]-x_base[::int(step/.0001),n])**2 + (y[:,n]-y_base[::int(step/.0001),n])**2)**.5,'b.')
 
         plt.show()
 #generateODEingredients(4)
 #anim = animate_pendulum2(4, odeint)
 
+def generateFiles(n, func):
+    x_base, y_base = baseComparison(n)
+    stepsizes = [.04,.02,.01, .005]
+    print("try")
+    for i in range(len(stepsizes)):
+        step = stepsizes[i]
+        x, y = simulate(n, step, func)
+        plt.xlabel("Time")
+        plt.ylabel("Distance")
+        plt.title("stepsize: " + str(stepsizes[i]) + ", function: " + str(func.__name__) + ", segments: " + str(n))
+        plt.plot(np.linspace(0, 10 - step, 10/step),((x[:,n]-x_base[::int(step/.0001),n])**2 + (y[:,n]-y_base[::int(step/.0001),n])**2)**.5,'b.')
+        plt.savefig(str(n) + "-" + str(step) + "-" + func.__name__ + ".png")
+        plt.show()
+
 def generate1Data(n, func):
     x_base, y_base = baseComparison(n)
     step = 0.02
     x, y = simulate(n, step, func)
+    plt.xlabel("Time")
+    plt.ylabel("Distance")
+    plt.title("stepsize: " + str(step) + ", function: " + str(func.__name__))
     plt.plot(np.linspace(0, 10 - step, 10/step),((x[:,n]-x_base[::int(step/.0001),n])**2 + (y[:,n]-y_base[::int(step/.0001),n])**2)**.5,'b.')
 
     plt.show()
 
-generateData(4, RK4)
-generateData(4, euler)
-generateData(4, trapezoid)
+#generateData(4, RK4)
+#generateData(4, euler)
+#generateData(4, trapezoid)
 
 
 #Set up formatting for the movie files
