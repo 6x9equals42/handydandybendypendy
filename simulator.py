@@ -10,7 +10,6 @@ from sympy.physics import mechanics
 
 from sympy import Dummy, lambdify
 from scipy.integrate import odeint
-from scipy.integrate import BDF
 
 from matplotlib import animation
 
@@ -73,11 +72,11 @@ def generateODEingredients(n, lengths=None, masses=1):
     if lengths is None:
         lengths = np.ones(n) / n
     lengths = np.broadcast_to(lengths, n)
-    masses = np.broadcast_to(masses, n) / n
+    masses = np.ones(n) / n
 
     # Fixed parameters: gravitational constant, lengths, and masses
     parameters = [b] + [g] + list(l) + list(m) ##
-    parameter_vals = [0.09] + [9.81] + list(lengths) + list(masses) ##
+    parameter_vals = [0.09/n] + [9.81] + list(lengths) + list(masses) ##
 
     # define symbols for unknown parameters
     unknowns = [Dummy() for i in q + u] ##
@@ -88,7 +87,7 @@ def generateODEingredients(n, lengths=None, masses=1):
     mm_sym = KM.mass_matrix_full.subs(kds).subs(unknown_dict) ##
     fo_sym = KM.forcing_full.subs(kds).subs(unknown_dict) ##
 
-
+    # save the odes in a pickle
     with open("ode"+str(n)+".pickle", "wb") as f:
         pickle.dump((parameters,parameter_vals,unknowns,mm_sym,fo_sym), f)
 
@@ -100,6 +99,7 @@ def solveODEs(n, times, func,
     y0 = np.deg2rad(np.concatenate([np.broadcast_to(initial_positions, n),
                                     np.broadcast_to(initial_velocities, n)]))
 
+    # load odes from pickle
     with open("ode"+str(n)+".pickle", "rb") as f:
         parameters,parameter_vals,unknowns,mm_sym,fo_sym = pickle.load(f)
 
@@ -118,18 +118,17 @@ def solveODEs(n, times, func,
 
     return func(gradient, y0, times, args=(parameter_vals,))
 
-
+# euler's method
 def euler(func, y0, t, args=()):
     y = np.zeros((len(t), len(y0)))
     y[0] = y0
 
     for i in range(1, len(t)):
-        #for j in range(len(y0)):
-            #print(args.shape)
-            derivative = func(y[i-1], t[i-1], args[0])
-            y[i] = derivative*(t[i]-t[i-1]) + y[i-1]
+        derivative = func(y[i-1], t[i-1], args[0])
+        y[i] = derivative*(t[i]-t[i-1]) + y[i-1]
     return y
 
+# trapezoid method
 def trapezoid(func, y0, t, args=()):
     y =np.zeros((len(t), len(y0)))
     y[0] = y0
@@ -140,7 +139,7 @@ def trapezoid(func, y0, t, args=()):
         y[i] = 0.5 * dt * (func(y[i-1], t[i-1], args[0]) + func(eulerApprox, t[i], args[0])) + y[i-1]
     return y
 
-
+# RK4 method
 def RK4(func, y0, t, args=()):
     y = np.zeros((len(t), len(y0)))
     y[0] = y0
@@ -154,8 +153,8 @@ def RK4(func, y0, t, args=()):
         y[i] = y[i-1] + ((h/6)*(k1+(2*k2)+(2*k3)+k4))
     return y
 
+# get xy coords from relative polar coordinates in p
 def get_xy_coords(p, lengths=None):
-    """Get (x, y) coordinates from generalized coordinates p"""
     p = np.atleast_2d(p)
     n = p.shape[1] // 2
     if lengths is None:
@@ -165,9 +164,8 @@ def get_xy_coords(p, lengths=None):
     y = np.hstack([zeros, -lengths * np.cos(p[:, :n])])
     return np.cumsum(x, 1), np.cumsum(y, 1)
 
-
-def animate_pendulum2(n, func):
-    stepsize = .01
+# animate the pendulum, and write to file
+def animate_pendulum2(n, func, stepsize=.05):
     t = np.linspace(0, 10 - stepsize, 10/stepsize)
     x, y = simulate(n, stepsize, func)
     fig, ax = plt.subplots(figsize=(8, 8))
@@ -182,33 +180,40 @@ def animate_pendulum2(n, func):
         return line,
 
     def animate(i):
-        line.set_data(x[i], y[i])
+        line.set_data(x[i*int(.05/stepsize)], y[i*int(.05/stepsize)])
         return line,
 
-    anim = animation.FuncAnimation(fig, animate, frames=len(t),
-                                   interval=1000 * t.max() / len(t),
+    anim = animation.FuncAnimation(fig, animate, frames=200,
+                                   interval=50,
                                    blit=True, init_func=init)
     plt.close(fig)
     Writer = animation.writers['ffmpeg']
     writer = Writer(fps=20, metadata=dict(artist='Me'), bitrate=1800)
-    anim.save('odeint10.mp4', writer=writer)
-    return anim
+    anim.save(str(func.__name__)+'_'+str(n)+'_'+str(stepsize)+'.mp4', writer=writer)
 
+# run the specified solver with the specified step size
 def simulate(n, stepsize, func):
     t = np.linspace(0, 10 - stepsize, 10/stepsize)
     p = solveODEs(n, t, func)
     return get_xy_coords(p)
 
+# compare with LSODA
 def baseComparison(n):
     return simulate(n, .0001, odeint)
 
+# generate the comparison plots
 def generateData(n, func):
     x_base, y_base = baseComparison(n)
-    stepsizes = [.04,.02,.01, .005]
-    print("try")
+    # multipliers to account for different numbers of function evaluations
+    multiplier = {"euler": 1, "trapezoid": 2, "RK4": 4}
+    stepsizes = [.02,.01,.005, .0025]
+    stepsizes = [x*multiplier[str(func.__name__)] for x in stepsizes]
     for i in range(len(stepsizes)):
         step = stepsizes[i]
         x, y = simulate(n, step, func)
+        plt.xlabel("Time")
+        plt.ylabel("Distance")
+        plt.title("stepsize: " + str(stepsizes[i]) + " function: " + str(func.__name__))
         plt.plot(np.linspace(0, 10 - step, 10/step),((x[:,n]-x_base[::int(step/.0001),n])**2 + (y[:,n]-y_base[::int(step/.0001),n])**2)**.5,'b.')
         plt.xlabel('time')
         plt.ylabel('error (distance away)')
@@ -216,10 +221,28 @@ def generateData(n, func):
 #generateODEingredients(4)
 #anim = animate_pendulum2(4, odeint)
 
+# deprecated create files with the plots
+def generateFiles(n, func):
+    x_base, y_base = baseComparison(n)
+    stepsizes = [.04,.02,.01, .005]
+    for i in range(len(stepsizes)):
+        step = stepsizes[i]
+        x, y = simulate(n, step, func)
+        plt.xlabel("Time")
+        plt.ylabel("Distance")
+        plt.title("stepsize: " + str(stepsizes[i]) + ", function: " + str(func.__name__) + ", segments: " + str(n))
+        plt.plot(np.linspace(0, 10 - step, 10/step),((x[:,n]-x_base[::int(step/.0001),n])**2 + (y[:,n]-y_base[::int(step/.0001),n])**2)**.5,'b.')
+        plt.savefig(str(n) + "-" + str(step) + "-" + func.__name__ + ".png")
+        plt.show()
+
+# test function to generate a single graph
 def generate1Data(n, func):
     x_base, y_base = baseComparison(n)
     step = 0.02
     x, y = simulate(n, step, func)
+    plt.xlabel("Time")
+    plt.ylabel("Distance")
+    plt.title("stepsize: " + str(step) + ", function: " + str(func.__name__))
     plt.plot(np.linspace(0, 10 - step, 10/step),((x[:,n]-x_base[::int(step/.0001),n])**2 + (y[:,n]-y_base[::int(step/.0001),n])**2)**.5,'b.')
 
     plt.show()
